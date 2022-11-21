@@ -106,7 +106,7 @@ df = df.drop(columns=['NodeID'])
 ########## Hyper parameters ##########
 strategy = BalanceStrategy.WEIGHTS
 batch_size = 32 # is important to ensure that each batch has a decent chance of containing a few positive samples
-epochs = 1
+epochs = 10
 learningRate = 0.001 #Eh?Predictor=0.05, default=0.001
 dropOut = 0.05 #Eh?Predictor=0.05
 evalMetrics = [tf.keras.metrics.TruePositives(name='tp'),
@@ -117,8 +117,6 @@ evalMetrics = [tf.keras.metrics.TruePositives(name='tp'),
                tf.keras.metrics.Precision(name='precision'),
                tf.keras.metrics.Recall(name='recall'),
                tf.keras.metrics.AUC(name='auc')]
-numNodes = 20
-numLayers = 1
 
 
 
