@@ -21,6 +21,7 @@ from imblearn.under_sampling import RandomUnderSampler
 
 
 
+
 def print_positive_ratio(train_labels):
   neg, pos = np.bincount(train_labels)
   total = neg + pos
@@ -126,10 +127,12 @@ class ValidationReader():
       self.currentItr = 0
     self.currentItr += 1
     return self.reader.get_chunk(self.validationChunkSize)
-    
-    
-    
-    
+
+
+
+
+
+
 
 
 
@@ -155,50 +158,45 @@ evalMetrics = [tf.keras.metrics.TruePositives(name='tp'),
                tf.keras.metrics.Precision(name='precision'),
                tf.keras.metrics.Recall(name='recall'),
                tf.keras.metrics.AUC(name='auc')]
-scaler = pickle.load(open('data/scaler.pkl','rb'))
-testCSVFile = 'data/test.csv'
-validationCSVFile = 'data/validation.csv'
 testChunkSize = 1e6 # 1e6 ~= 10 iterations to cover whole train dataset
 validationChunkSize = int(testChunkSize * 0.2)
-valReader = ValidationReader(validationCSVFile, validationChunkSize)
-numNodes = 50
-numLayers = 1
 # convertToImg = False
 
+numNodes = 50
 if "NNODES" in os.environ:
-  numNodes = os.environ["NNODES"]
+  numNodes = int(os.environ["NNODES"])
+numLayers = 1
 if "NLAYERS" in os.environ:
-  numLayers = os.environ["NLAYERS"]
-
-if "CSVTEST" in os.environ:
-  testCSVFile = os.environ["CSVTEST"]
-if "CSVVAL" in os.environ:
-  validationCSVFile = os.environ["CSVVAL"]
-
+  numLayers = int(os.environ["NLAYERS"])
+dataPath = 'data/'
+if "DATAPATH" in os.environ:
+  dataPath = os.environ["DATAPATH"]
 modelName = ""
 if "MNAME" in os.environ:
   modelName = os.environ["MNAME"]
 
+valReader = ValidationReader(dataPath+'validation.csv', validationChunkSize)
+scaler = pickle.load(open(dataPath+'scaler.pkl','rb'))
 resultMetrics = ['TrainingRuntime', 'val_auc', 'auc', 'val_loss', 'loss',
                  'tp', 'fp', 'tn', 'fn', 'accuracy', 'precision', 'recall', 'fscore', 'mcc',
                  'val_tp', 'val_fp', 'val_tn', 'val_fn', 'val_accuracy', 'val_precision', 'val_recall',
                  'val_fscore', 'val_mcc']
 
-modelPath = 'savedModels/DNN_'+str(numLayers)+'L_'+str(numNodes)+'N'+MNAME
+modelPath = 'savedModels/DNN_'+str(numLayers)+'L_'+str(numNodes)+'N'+modelName
 if os.path.exists(modelPath):
   shutil.rmtree(modelPath)
 os.mkdir(modelPath)
 os.mkdir(modelPath+'/model')
 os.mkdir(modelPath+'/modelWeights')
 
-inputSize = len(pd.read_csv(testCSVFile, nrows=1).columns)-2 # -2 to remove NodeID and label
+inputSize = len(pd.read_csv(dataPath+'test.csv', nrows=1).columns)-2 # -2 to remove NodeID and label
 model = makeDNNModel(evalMetrics, dropOut, learningRate, inputSize, numNodes, numLayers)
 
 finalResults = {x:[] for x in resultMetrics}
 for epoch in range(numEpochs):
   model.optimizer.lr = 1e-3 * (10 ** (epoch / 30))
   epochResults = {}
-  for train_df in pd.read_csv(testCSVFile, chunksize=testChunkSize):
+  for train_df in pd.read_csv(dataPath+'test.csv', chunksize=testChunkSize):
     train_df = train_df.drop(columns=['NodeID'])
     train_df = train_df.sample(frac=1).reset_index(drop=True)#shuffle
 
