@@ -21,12 +21,6 @@ from imblearn.under_sampling import RandomUnderSampler
 
 
 
-
-
-
-
-
-
 def print_positive_ratio(train_labels):
   neg, pos = np.bincount(train_labels)
   total = neg + pos
@@ -59,8 +53,26 @@ def undersample(train_array, train_labels):
   train_array, train_labels = undersample.fit_resample(train_array, train_labels)
   return train_array, train_labels
 
-########## Learning Model ##########
-def make_model(evalMetrics, dropOut, learningRate, inputSize, numNodes, numLayers):
+# DatePaper
+#Row size 5 to 10
+#window from 5x5 to 13x13
+#best
+#7 row 13x13
+#input_shape = (13,13,49)
+# def makeCNNModel(evalMetrics, dropOut, learningRate, inputSize):
+#   model = tf.keras.Sequential()
+#   model.add(tf.keras.layers.Conv2D(32, (3, 3), activation = 'relu', input_shape = inputSize))
+#   model.add(tf.keras.layers.AveragePooling2D((3, 3)))
+#   model.add(tf.keras.layers.Flatten())
+#   model.add(tf.keras.layers.Dense(128, activation = 'relu'))
+#   model.add(tf.keras.layers.Dense(128, activation = 'relu'))
+#   model.add(tf.keras.layers.Dense(2, activation = 'relu'))
+#   model.compile(optimizer = tf.keras.optimizers.Adam(),
+#                 loss = tf.keras.losses.CategoricalCrossentropy(),
+#                 metrics = evalMetrics)
+#   return model
+
+def makeDNNModel(evalMetrics, dropOut, learningRate, inputSize, numNodes, numLayers):
   model = tf.keras.Sequential()
   model.add(tf.keras.layers.Input(shape=inputSize))
   for x in range(numLayers):
@@ -114,6 +126,10 @@ class ValidationReader():
       self.currentItr = 0
     self.currentItr += 1
     return self.reader.get_chunk(self.validationChunkSize)
+    
+    
+    
+    
 
 
 
@@ -122,16 +138,13 @@ class ValidationReader():
 
 
 
-
-
-
-
-
-
-
+# ICECS limitacao problema das macros, poucos dados de treino.
+# Anterior foi posicionado com Cadence esse foi só roteado com cadence.
 strategy = BalanceStrategy.WEIGHTS
-batch_size = 32 # is important to ensure that each batch has a decent chance of containing a few positive samples
-numEpochs = 10
+batch_size = 256 # is important to ensure that each batch has a decent chance of containing a few positive samples
+numEpochs = 100
+# https://www.youtube.com/watch?v=DO-xv9WLvoM
+# https://towardsdatascience.com/how-to-optimize-learning-rate-with-tensorflow-its-easier-than-you-think-164f980a7c7b
 learningRate = 0.001 #Eh?Predictor=0.05, default=0.001
 dropOut = 0.05 #Eh?Predictor=0.05
 evalMetrics = [tf.keras.metrics.TruePositives(name='tp'),
@@ -148,103 +161,122 @@ validationCSVFile = 'data/validation.csv'
 testChunkSize = 1e6 # 1e6 ~= 10 iterations to cover whole train dataset
 validationChunkSize = int(testChunkSize * 0.2)
 valReader = ValidationReader(validationCSVFile, validationChunkSize)
+numNodes = 50
+numLayers = 1
+# convertToImg = False
+
+if "NNODES" in os.environ:
+  numNodes = os.environ["NNODES"]
+if "NLAYERS" in os.environ:
+  numLayers = os.environ["NLAYERS"]
+
+if "CSVTEST" in os.environ:
+  testCSVFile = os.environ["CSVTEST"]
+if "CSVVAL" in os.environ:
+  validationCSVFile = os.environ["CSVVAL"]
+
+modelName = ""
+if "MNAME" in os.environ:
+  modelName = os.environ["MNAME"]
 
 resultMetrics = ['TrainingRuntime', 'val_auc', 'auc', 'val_loss', 'loss',
                  'tp', 'fp', 'tn', 'fn', 'accuracy', 'precision', 'recall', 'fscore', 'mcc',
                  'val_tp', 'val_fp', 'val_tn', 'val_fn', 'val_accuracy', 'val_precision', 'val_recall',
                  'val_fscore', 'val_mcc']
 
-for numNodes in [50, 100]:
-  for numLayers in range(1,3):
-    modelPath = 'savedModels/DNN_'+str(numLayers)+'L_'+str(numNodes)+'N'
-    if os.path.exists(modelPath):
-      shutil.rmtree(modelPath)
-    os.mkdir(modelPath)
-    os.mkdir(modelPath+'/model')
-    os.mkdir(modelPath+'/modelWeights')
+modelPath = 'savedModels/DNN_'+str(numLayers)+'L_'+str(numNodes)+'N'+MNAME
+if os.path.exists(modelPath):
+  shutil.rmtree(modelPath)
+os.mkdir(modelPath)
+os.mkdir(modelPath+'/model')
+os.mkdir(modelPath+'/modelWeights')
 
-    inputSize = len(pd.read_csv(testCSVFile, nrows=1).columns)-2 # -2 to remove NodeID and label
-    model = make_model(evalMetrics, dropOut, learningRate, inputSize, numNodes, numLayers)
+inputSize = len(pd.read_csv(testCSVFile, nrows=1).columns)-2 # -2 to remove NodeID and label
+model = makeDNNModel(evalMetrics, dropOut, learningRate, inputSize, numNodes, numLayers)
 
-    finalResults = {x:[] for x in resultMetrics}
-    for epoch in range(numEpochs):
-      epochResults = {}
-      for train_df in pd.read_csv(testCSVFile, chunksize=testChunkSize):
-        train_df = train_df.drop(columns=['NodeID'])
-        train_df = train_df.sample(frac=1).reset_index(drop=True)#shuffle
+finalResults = {x:[] for x in resultMetrics}
+for epoch in range(numEpochs):
+  model.optimizer.lr = 1e-3 * (10 ** (epoch / 30))
+  epochResults = {}
+  for train_df in pd.read_csv(testCSVFile, chunksize=testChunkSize):
+    train_df = train_df.drop(columns=['NodeID'])
+    train_df = train_df.sample(frac=1).reset_index(drop=True)#shuffle
 
-        val_df = valReader.getChunk()
-        val_df = val_df.drop(columns=['NodeID'])
-        val_df = val_df.sample(frac=1).reset_index(drop=True)#shuffle
+    val_df = valReader.getChunk()
+    val_df = val_df.drop(columns=['NodeID'])
+    val_df = val_df.sample(frac=1).reset_index(drop=True)#shuffle
 
-        train_labels = np.array(train_df.pop('HasDetailedRoutingViolation'))
-        val_labels = np.array(val_df.pop('HasDetailedRoutingViolation'))
+    train_labels = np.array(train_df.pop('HasDetailedRoutingViolation'))
+    val_labels = np.array(val_df.pop('HasDetailedRoutingViolation'))
 
-        train_df = scaler.transform(train_df)
-        val_df = scaler.transform(val_df)
+    train_df = scaler.transform(train_df)
+    val_df = scaler.transform(val_df)
 
-        train_array = np.array(train_df)
-        val_array = np.array(val_df)
+    train_array = np.array(train_df)
+    val_array = np.array(val_df)
+    
+#     if convertToImg:
+#       train_array = train_array.reshape((len(train_array), 3, 3, 14))
+#       val_array = val_array.reshape((len(val_array), 3, 3, 14))
 
-        weight = None
-        if strategy == BalanceStrategy.OVERSAMPLE:
-          train_array, train_labels = oversample(train_array, train_labels)
-        elif strategy == BalanceStrategy.UNDERSAMPLE:
-          train_array, train_labels = undersample(train_array, train_labels)
-        elif strategy == BalanceStrategy.WEIGHTS:
-          weight = calculate_class_weights(train_labels)
+    weight = None
+    if strategy == BalanceStrategy.OVERSAMPLE:
+      train_array, train_labels = oversample(train_array, train_labels)
+    elif strategy == BalanceStrategy.UNDERSAMPLE:
+      train_array, train_labels = undersample(train_array, train_labels)
+    elif strategy == BalanceStrategy.WEIGHTS:
+      weight = calculate_class_weights(train_labels)
 
-        timeStart = time.time()
-        train_history = model.fit(x=train_array,
-                                 y=train_labels,
-                                 batch_size=batch_size,
-                                 validation_data=(val_array, val_labels),
-                                 class_weight=weight)
-        timeEnd = time.time()
+    timeStart = time.time()
+    train_history = model.fit(x=train_array,
+                             y=train_labels,
+                             batch_size=batch_size,
+                             validation_data=(val_array, val_labels),
+                             class_weight=weight)
+    timeEnd = time.time()
 
-        if len(epochResults) == 0:
-          epochResults = {x:[] for x in resultMetrics}
-        epochResults['TrainingRuntime'].append(timeEnd - timeStart)
-        for key, value in train_history.history.items():
-          epochResults[key].append(value[0])
-      # end chunk read iteration
+    if len(epochResults) == 0:
+      epochResults = {x:[] for x in resultMetrics}
+    epochResults['TrainingRuntime'].append(timeEnd - timeStart)
+    for key, value in train_history.history.items():
+      epochResults[key].append(value[0])
+  # end chunk read iteration
 
-      finalResults['TrainingRuntime'].append(sum(epochResults['TrainingRuntime']))
-      for x in {'auc', 'loss', 'val_auc', 'val_loss'}:# AVG resultMetrics
-        finalResults[x].append(sum(epochResults[x]) / len(epochResults[x]))
+  finalResults['TrainingRuntime'].append(sum(epochResults['TrainingRuntime']))
+  for x in {'auc', 'loss', 'val_auc', 'val_loss'}:# AVG resultMetrics
+    finalResults[x].append(sum(epochResults[x]) / len(epochResults[x]))
 
-      tp = sum(epochResults['tp'])
-      fp = sum(epochResults['fp'])
-      tn = sum(epochResults['tn'])
-      fn = sum(epochResults['fn'])
-      precision, recall, accuracy, fscore, mcc = calculateMetrics(tp, fp, tn, fn)
-      finalResults['tp'].append(tp)
-      finalResults['fp'].append(fp)
-      finalResults['tn'].append(tn)
-      finalResults['fn'].append(fn)
-      finalResults['precision'].append(precision)
-      finalResults['recall'].append(recall)
-      finalResults['accuracy'].append(accuracy)
-      finalResults['fscore'].append(fscore)
-      finalResults['mcc'].append(mcc)
+  tp = sum(epochResults['tp'])
+  fp = sum(epochResults['fp'])
+  tn = sum(epochResults['tn'])
+  fn = sum(epochResults['fn'])
+  precision, recall, accuracy, fscore, mcc = calculateMetrics(tp, fp, tn, fn)
+  finalResults['tp'].append(tp)
+  finalResults['fp'].append(fp)
+  finalResults['tn'].append(tn)
+  finalResults['fn'].append(fn)
+  finalResults['precision'].append(precision)
+  finalResults['recall'].append(recall)
+  finalResults['accuracy'].append(accuracy)
+  finalResults['fscore'].append(fscore)
+  finalResults['mcc'].append(mcc)
 
-      vtp = sum(epochResults['val_tp'])
-      vfp = sum(epochResults['val_fp'])
-      vtn = sum(epochResults['val_tn'])
-      vfn = sum(epochResults['val_fn'])
-      vprecision, vrecall, vaccuracy, vfscore, vmcc = calculateMetrics(vtp, vfp, vtn, vfn)
-      finalResults['val_tp'].append(vtp)
-      finalResults['val_fp'].append(vfp)
-      finalResults['val_tn'].append(vtn)
-      finalResults['val_fn'].append(vfn)
-      finalResults['val_precision'].append(vprecision)
-      finalResults['val_recall'].append(vrecall)
-      finalResults['val_accuracy'].append(vaccuracy)
-      finalResults['val_fscore'].append(vfscore)
-      finalResults['val_mcc'].append(vmcc)
-    # end Epoch
-    pd.DataFrame(finalResults).to_csv(modelPath+'/trainingResults.csv', index=False)
-    model.save(modelPath+'/model/savedModel')
-    model.save_weights(modelPath+'/modelWeights/model.ckpt')
-  # end all Epochs
-# end all Learning Models
+  vtp = sum(epochResults['val_tp'])
+  vfp = sum(epochResults['val_fp'])
+  vtn = sum(epochResults['val_tn'])
+  vfn = sum(epochResults['val_fn'])
+  vprecision, vrecall, vaccuracy, vfscore, vmcc = calculateMetrics(vtp, vfp, vtn, vfn)
+  finalResults['val_tp'].append(vtp)
+  finalResults['val_fp'].append(vfp)
+  finalResults['val_tn'].append(vtn)
+  finalResults['val_fn'].append(vfn)
+  finalResults['val_precision'].append(vprecision)
+  finalResults['val_recall'].append(vrecall)
+  finalResults['val_accuracy'].append(vaccuracy)
+  finalResults['val_fscore'].append(vfscore)
+  finalResults['val_mcc'].append(vmcc)
+# end Epoch
+
+pd.DataFrame(finalResults).to_csv(modelPath+'/trainingResults.csv', index=False)
+model.save(modelPath+'/model/savedModel')
+model.save_weights(modelPath+'/modelWeights/model.ckpt')
