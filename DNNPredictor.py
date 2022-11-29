@@ -145,7 +145,7 @@ class ValidationReader():
 # Anterior foi posicionado com Cadence esse foi só roteado com cadence.
 strategy = BalanceStrategy.WEIGHTS
 batch_size = 256 # is important to ensure that each batch has a decent chance of containing a few positive samples
-numEpochs = 100
+numEpochs = 500
 # https://www.youtube.com/watch?v=DO-xv9WLvoM
 # https://towardsdatascience.com/how-to-optimize-learning-rate-with-tensorflow-its-easier-than-you-think-164f980a7c7b
 learningRate = 0.001 #Eh?Predictor=0.05, default=0.001
@@ -195,7 +195,8 @@ model = makeDNNModel(evalMetrics, dropOut, learningRate, inputSize, numNodes, nu
 finalResults = {x:[] for x in resultMetrics}
 for epoch in range(numEpochs):
   print('Current epoch is: ', epoch)
-  model.optimizer.lr = 1e-3 * (10 ** (epoch / 30))
+#   model.optimizer.lr = 1e-3 * (10 ** (epoch / 30))
+  model.optimizer.lr = 1e-3 + epoch*(1.8e-05) # from 0.001 to 0.01
   epochResults = {}
   for train_df in pd.read_csv(dataPath+'test.csv', chunksize=testChunkSize):
     train_df = train_df.drop(columns=['NodeID'])
