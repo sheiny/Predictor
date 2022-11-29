@@ -158,7 +158,7 @@ evalMetrics = [tf.keras.metrics.TruePositives(name='tp'),
                tf.keras.metrics.Precision(name='precision'),
                tf.keras.metrics.Recall(name='recall'),
                tf.keras.metrics.AUC(name='auc')]
-testChunkSize = 3e6 # 1e6 ~= 10 iterations to cover whole train dataset
+testChunkSize = 1e5 # 1e6 ~= 10 iterations to cover whole train dataset
 validationChunkSize = int(testChunkSize * 0.2)
 # convertToImg = False
 
@@ -194,6 +194,7 @@ model = makeDNNModel(evalMetrics, dropOut, learningRate, inputSize, numNodes, nu
 
 finalResults = {x:[] for x in resultMetrics}
 for epoch in range(numEpochs):
+  print('Current epoch is: ', epoch)
   model.optimizer.lr = 1e-3 * (10 ** (epoch / 30))
   epochResults = {}
   for train_df in pd.read_csv(dataPath+'test.csv', chunksize=testChunkSize):
@@ -274,7 +275,7 @@ for epoch in range(numEpochs):
   finalResults['val_fscore'].append(vfscore)
   finalResults['val_mcc'].append(vmcc)
 # end Epoch
-
+print('Saving models and training history')
 pd.DataFrame(finalResults).to_csv(modelPath+'/trainingResults.csv', index=False)
 model.save(modelPath+'/model/savedModel')
 model.save_weights(modelPath+'/modelWeights/model.ckpt')
