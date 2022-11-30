@@ -200,6 +200,8 @@ os.mkdir(modelPath+'/modelWeights')
 inputSize = len(pd.read_csv(dataPath+'test.csv', nrows=1).columns)-2 # -2 to remove NodeID and label
 if useNeighborhood == False:
   inputSize /= 9
+  inputSize = int(inputSize)
+  
 model = makeDNNModel(evalMetrics, dropOut, learningRate, inputSize, numNodes, numLayers)
 
 finalResults = {x:[] for x in resultMetrics}
