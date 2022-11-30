@@ -140,11 +140,10 @@ class ValidationReader():
 
 
 
-
 # ICECS limitacao problema das macros, poucos dados de treino.
 # Anterior foi posicionado com Cadence esse foi só roteado com cadence.
 strategy = BalanceStrategy.WEIGHTS
-batch_size = 256 # is important to ensure that each batch has a decent chance of containing a few positive samples
+batch_size = 128 # is important to ensure that each batch has a decent chance of containing a few positive samples
 numEpochs = 500
 # https://www.youtube.com/watch?v=DO-xv9WLvoM
 # https://towardsdatascience.com/how-to-optimize-learning-rate-with-tensorflow-its-easier-than-you-think-164f980a7c7b
@@ -181,7 +180,7 @@ if "NONEIGHBORHOOD" in os.environ:
   useNeighborhood = False
 
 valReader = ValidationReader(dataPath+'validation.csv', validationChunkSize)
-scaler = pickle.load(open(dataPath+'scaler.pkl','rb'))
+# scaler = pickle.load(open(dataPath+'scaler.pkl','rb'))
 resultMetrics = ['TrainingRuntime', 'val_auc', 'auc', 'val_loss', 'loss',
                  'tp', 'fp', 'tn', 'fn', 'accuracy', 'precision', 'recall', 'fscore', 'mcc',
                  'val_tp', 'val_fp', 'val_tn', 'val_fn', 'val_accuracy', 'val_precision', 'val_recall',
@@ -201,9 +200,21 @@ inputSize = len(pd.read_csv(dataPath+'test.csv', nrows=1).columns)-2 # -2 to rem
 if useNeighborhood == False:
   inputSize /= 9
   inputSize = int(inputSize)
-  
 model = makeDNNModel(evalMetrics, dropOut, learningRate, inputSize, numNodes, numLayers)
 
+
+scaler = sklearn.preprocessing.StandardScaler()
+toDrop = ['NodeID', 'HasDetailedRoutingViolation']
+if useNeighborhood == False:
+  toDrop += collumnsToDrop
+for train_df in pd.read_csv(dataPath+'test.csv', chunksize=testChunkSize):
+  train_df = train_df.drop(columns=toDrop)
+  scaler.partial_fit(train_df)
+for val_df in pd.read_csv(dataPath+'validation.csv', chunksize=testChunkSize):
+  val_df = val_df.drop(columns=toDrop)
+  scaler.partial_fit(val_df)
+
+    
 finalResults = {x:[] for x in resultMetrics}
 for epoch in range(numEpochs):
   print('Current epoch is: ', epoch)
@@ -212,20 +223,21 @@ for epoch in range(numEpochs):
   epochResults = {}
   for train_df in pd.read_csv(dataPath+'test.csv', chunksize=testChunkSize):
     train_df = train_df.drop(columns=['NodeID'])
-    if useNeighborhood == False:
-      train_df = train_df.drop(columns=collumnsToDrop)
     train_df = train_df.sample(frac=1).reset_index(drop=True)#shuffle
 
     val_df = valReader.getChunk()
     val_df = val_df.drop(columns=['NodeID'])
-    if useNeighborhood == False:
-      val_df = val_df.drop(columns=collumnsToDrop)
     val_df = val_df.sample(frac=1).reset_index(drop=True)#shuffle
 
     train_labels = np.array(train_df.pop('HasDetailedRoutingViolation'))
     val_labels = np.array(val_df.pop('HasDetailedRoutingViolation'))
 
+    if useNeighborhood == False:
+      train_df = train_df.drop(columns=collumnsToDrop)
     train_df = scaler.transform(train_df)
+    
+    if useNeighborhood == False:
+      val_df = val_df.drop(columns=collumnsToDrop)
     val_df = scaler.transform(val_df)
 
     train_array = np.array(train_df)
