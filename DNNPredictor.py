@@ -162,6 +162,8 @@ testChunkSize = 1e5 # 1e6 ~= 10 iterations to cover whole train dataset
 validationChunkSize = int(testChunkSize * 0.2)
 # convertToImg = False
 
+collumnsToDrop = ['0_#Cells', '0_#CellPins', '0_#Macros', '0_#MacroPins', '0_HorizontalOverflow', '0_VerticalOverflow', '0_TileArea', '0_CellDensity', '0_MacroDensity', '0_MacroPinDensity', '0_Layer1BlkgDensity', '0_Layer2BlkgDensity', '0_Layer1PinDensity', '0_Layer2PinDensity', '1_#Cells', '1_#CellPins', '1_#Macros', '1_#MacroPins', '1_HorizontalOverflow', '1_VerticalOverflow', '1_TileArea', '1_CellDensity', '1_MacroDensity', '1_MacroPinDensity', '1_Layer1BlkgDensity', '1_Layer2BlkgDensity', '1_Layer1PinDensity', '1_Layer2PinDensity', '2_#Cells', '2_#CellPins', '2_#Macros', '2_#MacroPins', '2_HorizontalOverflow', '2_VerticalOverflow', '2_TileArea', '2_CellDensity', '2_MacroDensity', '2_MacroPinDensity', '2_Layer1BlkgDensity', '2_Layer2BlkgDensity', '2_Layer1PinDensity', '2_Layer2PinDensity', '3_#Cells', '3_#CellPins', '3_#Macros', '3_#MacroPins', '3_HorizontalOverflow', '3_VerticalOverflow', '3_TileArea', '3_CellDensity', '3_MacroDensity', '3_MacroPinDensity', '3_Layer1BlkgDensity', '3_Layer2BlkgDensity', '3_Layer1PinDensity', '3_Layer2PinDensity', '5_#Cells', '5_#CellPins', '5_#Macros', '5_#MacroPins', '5_HorizontalOverflow', '5_VerticalOverflow', '5_TileArea', '5_CellDensity', '5_MacroDensity', '5_MacroPinDensity', '5_Layer1BlkgDensity', '5_Layer2BlkgDensity', '5_Layer1PinDensity', '5_Layer2PinDensity', '6_#Cells', '6_#CellPins', '6_#Macros', '6_#MacroPins', '6_HorizontalOverflow', '6_VerticalOverflow', '6_TileArea', '6_CellDensity', '6_MacroDensity', '6_MacroPinDensity', '6_Layer1BlkgDensity', '6_Layer2BlkgDensity', '6_Layer1PinDensity', '6_Layer2PinDensity', '7_#Cells', '7_#CellPins', '7_#Macros', '7_#MacroPins', '7_HorizontalOverflow', '7_VerticalOverflow', '7_TileArea', '7_CellDensity', '7_MacroDensity', '7_MacroPinDensity', '7_Layer1BlkgDensity', '7_Layer2BlkgDensity', '7_Layer1PinDensity', '7_Layer2PinDensity', '8_#Cells', '8_#CellPins', '8_#Macros', '8_#MacroPins', '8_HorizontalOverflow', '8_VerticalOverflow', '8_TileArea', '8_CellDensity', '8_MacroDensity', '8_MacroPinDensity', '8_Layer1BlkgDensity', '8_Layer2BlkgDensity', '8_Layer1PinDensity', '8_Layer2PinDensity']
+
 numNodes = 50
 if "NNODES" in os.environ:
   numNodes = int(os.environ["NNODES"])
@@ -174,6 +176,9 @@ if "DATAPATH" in os.environ:
 modelName = ""
 if "MNAME" in os.environ:
   modelName = os.environ["MNAME"]
+useNeighborhood = True
+if "NONEIGHBORHOOD" in os.environ:
+  useNeighborhood = False
 
 valReader = ValidationReader(dataPath+'validation.csv', validationChunkSize)
 scaler = pickle.load(open(dataPath+'scaler.pkl','rb'))
@@ -183,6 +188,9 @@ resultMetrics = ['TrainingRuntime', 'val_auc', 'auc', 'val_loss', 'loss',
                  'val_fscore', 'val_mcc']
 
 modelPath = 'savedModels/DNN_'+str(numLayers)+'L_'+str(numNodes)+'N'+modelName
+if useNeighborhood == False:
+  modelPath = modelPath + '_NN'
+
 if os.path.exists(modelPath):
   shutil.rmtree(modelPath)
 os.mkdir(modelPath)
@@ -190,6 +198,8 @@ os.mkdir(modelPath+'/model')
 os.mkdir(modelPath+'/modelWeights')
 
 inputSize = len(pd.read_csv(dataPath+'test.csv', nrows=1).columns)-2 # -2 to remove NodeID and label
+if useNeighborhood == False:
+  inputSize /= 9
 model = makeDNNModel(evalMetrics, dropOut, learningRate, inputSize, numNodes, numLayers)
 
 finalResults = {x:[] for x in resultMetrics}
@@ -200,10 +210,14 @@ for epoch in range(numEpochs):
   epochResults = {}
   for train_df in pd.read_csv(dataPath+'test.csv', chunksize=testChunkSize):
     train_df = train_df.drop(columns=['NodeID'])
+    if useNeighborhood == False:
+      train_df = train_df.drop(columns=collumnsToDrop)
     train_df = train_df.sample(frac=1).reset_index(drop=True)#shuffle
 
     val_df = valReader.getChunk()
     val_df = val_df.drop(columns=['NodeID'])
+    if useNeighborhood == False:
+      val_df = val_df.drop(columns=collumnsToDrop)
     val_df = val_df.sample(frac=1).reset_index(drop=True)#shuffle
 
     train_labels = np.array(train_df.pop('HasDetailedRoutingViolation'))
@@ -214,18 +228,8 @@ for epoch in range(numEpochs):
 
     train_array = np.array(train_df)
     val_array = np.array(val_df)
-    
-#     if convertToImg:
-#       train_array = train_array.reshape((len(train_array), 3, 3, 14))
-#       val_array = val_array.reshape((len(val_array), 3, 3, 14))
 
-    weight = None
-    if strategy == BalanceStrategy.OVERSAMPLE:
-      train_array, train_labels = oversample(train_array, train_labels)
-    elif strategy == BalanceStrategy.UNDERSAMPLE:
-      train_array, train_labels = undersample(train_array, train_labels)
-    elif strategy == BalanceStrategy.WEIGHTS:
-      weight = calculate_class_weights(train_labels)
+    weight = calculate_class_weights(train_labels)
 
     timeStart = time.time()
     train_history = model.fit(x=train_array,
