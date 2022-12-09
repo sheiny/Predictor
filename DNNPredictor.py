@@ -21,28 +21,10 @@ from imblearn.under_sampling import RandomUnderSampler
 
 
 
-
 def print_positive_ratio(train_labels):
   neg, pos = np.bincount(train_labels)
   total = neg + pos
   print('Examples:\n    Total: {}\n    Positive: {} ({:.2f}% of total)\n'.format(total, pos, 100 * pos / total))
-
-# Claculate weight for classes
-# Scaling by total/2 helps keep the loss to a similar magnitude.
-# The sum of the weights of all examples stays the same.
-def calculate_class_weights(train_labels):
-  if True in train_labels and False in train_labels:
-    neg, pos = np.bincount(train_labels)
-    total = neg + pos
-    weight_for_0 = (1 / neg)*(total)/2.0 
-    weight_for_1 = (1 / pos)*(total)/2.0
-    class_weight = {0: weight_for_0, 1: weight_for_1}
-    print('Weight for class 0: {:.2f}'.format(weight_for_0))
-    print('Weight for class 1: {:.2f}'.format(weight_for_1))
-    return class_weight
-  else:
-    print('Using default weights(1, 1) due to the absence of either a positive or negative sample.')
-    return {0: 1, 1: 1}
 
 def oversample(train_array, train_labels):
   oversample = RandomOverSampler()
@@ -105,12 +87,6 @@ def numLines(file):
       lines += 1
   return lines
 
-class BalanceStrategy(Enum):
-  NONE = 0
-  WEIGHTS = 1
-  OVERSAMPLE = 2
-  UNDERSAMPLE = 3
-
 class ValidationReader():
   def __init__(self, filePath, validationChunkSize):
     self.filePath = filePath
@@ -140,10 +116,7 @@ class ValidationReader():
 
 
 
-# ICECS limitacao problema das macros, poucos dados de treino.
-# Anterior foi posicionado com Cadence esse foi só roteado com cadence.
-strategy = BalanceStrategy.WEIGHTS
-batch_size = 128 # is important to ensure that each batch has a decent chance of containing a few positive samples
+batch_size = 1024 # is important to ensure that each batch has a decent chance of containing a few positive samples
 numEpochs = 500
 # https://www.youtube.com/watch?v=DO-xv9WLvoM
 # https://towardsdatascience.com/how-to-optimize-learning-rate-with-tensorflow-its-easier-than-you-think-164f980a7c7b
@@ -160,7 +133,6 @@ evalMetrics = [tf.keras.metrics.TruePositives(name='tp'),
 testChunkSize = 1e5 # 1e6 ~= 10 iterations to cover whole train dataset
 validationChunkSize = int(testChunkSize * 0.2)
 # convertToImg = False
-
 collumnsToDrop = ['0_#Cells', '0_#CellPins', '0_#Macros', '0_#MacroPins', '0_HorizontalOverflow', '0_VerticalOverflow', '0_TileArea', '0_CellDensity', '0_MacroDensity', '0_MacroPinDensity', '0_Layer1BlkgDensity', '0_Layer2BlkgDensity', '0_Layer1PinDensity', '0_Layer2PinDensity', '1_#Cells', '1_#CellPins', '1_#Macros', '1_#MacroPins', '1_HorizontalOverflow', '1_VerticalOverflow', '1_TileArea', '1_CellDensity', '1_MacroDensity', '1_MacroPinDensity', '1_Layer1BlkgDensity', '1_Layer2BlkgDensity', '1_Layer1PinDensity', '1_Layer2PinDensity', '2_#Cells', '2_#CellPins', '2_#Macros', '2_#MacroPins', '2_HorizontalOverflow', '2_VerticalOverflow', '2_TileArea', '2_CellDensity', '2_MacroDensity', '2_MacroPinDensity', '2_Layer1BlkgDensity', '2_Layer2BlkgDensity', '2_Layer1PinDensity', '2_Layer2PinDensity', '3_#Cells', '3_#CellPins', '3_#Macros', '3_#MacroPins', '3_HorizontalOverflow', '3_VerticalOverflow', '3_TileArea', '3_CellDensity', '3_MacroDensity', '3_MacroPinDensity', '3_Layer1BlkgDensity', '3_Layer2BlkgDensity', '3_Layer1PinDensity', '3_Layer2PinDensity', '5_#Cells', '5_#CellPins', '5_#Macros', '5_#MacroPins', '5_HorizontalOverflow', '5_VerticalOverflow', '5_TileArea', '5_CellDensity', '5_MacroDensity', '5_MacroPinDensity', '5_Layer1BlkgDensity', '5_Layer2BlkgDensity', '5_Layer1PinDensity', '5_Layer2PinDensity', '6_#Cells', '6_#CellPins', '6_#Macros', '6_#MacroPins', '6_HorizontalOverflow', '6_VerticalOverflow', '6_TileArea', '6_CellDensity', '6_MacroDensity', '6_MacroPinDensity', '6_Layer1BlkgDensity', '6_Layer2BlkgDensity', '6_Layer1PinDensity', '6_Layer2PinDensity', '7_#Cells', '7_#CellPins', '7_#Macros', '7_#MacroPins', '7_HorizontalOverflow', '7_VerticalOverflow', '7_TileArea', '7_CellDensity', '7_MacroDensity', '7_MacroPinDensity', '7_Layer1BlkgDensity', '7_Layer2BlkgDensity', '7_Layer1PinDensity', '7_Layer2PinDensity', '8_#Cells', '8_#CellPins', '8_#Macros', '8_#MacroPins', '8_HorizontalOverflow', '8_VerticalOverflow', '8_TileArea', '8_CellDensity', '8_MacroDensity', '8_MacroPinDensity', '8_Layer1BlkgDensity', '8_Layer2BlkgDensity', '8_Layer1PinDensity', '8_Layer2PinDensity']
 
 numNodes = 50
@@ -202,23 +174,41 @@ if useNeighborhood == False:
   inputSize = int(inputSize)
 model = makeDNNModel(evalMetrics, dropOut, learningRate, inputSize, numNodes, numLayers)
 
-
 scaler = sklearn.preprocessing.StandardScaler()
 toDrop = ['NodeID', 'HasDetailedRoutingViolation']
 if useNeighborhood == False:
   toDrop += collumnsToDrop
+
+totalPos = 0
+totalNeg = 0
 for train_df in pd.read_csv(dataPath+'test.csv', chunksize=testChunkSize):
+  pos = sum(train_df['HasDetailedRoutingViolation'])
+  totalPos += pos
+  totalNeg += len(train_df['HasDetailedRoutingViolation']) - pos
   train_df = train_df.drop(columns=toDrop)
   scaler.partial_fit(train_df)
 for val_df in pd.read_csv(dataPath+'validation.csv', chunksize=testChunkSize):
+  pos = sum(val_df['HasDetailedRoutingViolation'])
+  totalPos += pos
+  totalNeg += len(val_df['HasDetailedRoutingViolation']) - pos
   val_df = val_df.drop(columns=toDrop)
   scaler.partial_fit(val_df)
 
-    
+weight = None
+if "USEWEIGHT" in os.environ:
+  total = totalNeg + totalPos
+  weight_for_0 = (1 / totalNeg)*(total)/2.0
+  weight_for_1 = (1 / totalPos)*(total)/2.0
+  class_weight = {0: weight_for_0, 1: weight_for_1}
+  print('Pos, Neg, and Total ',totalPos, totalNeg, total)
+  print('Weight for class 0: {:.2f}'.format(weight_for_0))
+  print('Weight for class 1: {:.2f}'.format(weight_for_1))
+else:
+  weight = {0: 0.5, 1: 0.5}
+
 finalResults = {x:[] for x in resultMetrics}
 for epoch in range(numEpochs):
   print('Current epoch is: ', epoch)
-#   model.optimizer.lr = 1e-3 * (10 ** (epoch / 30))
   model.optimizer.lr = 1e-3 + epoch*(1.8e-05) # from 0.001 to 0.01
   epochResults = {}
   for train_df in pd.read_csv(dataPath+'test.csv', chunksize=testChunkSize):
@@ -242,8 +232,6 @@ for epoch in range(numEpochs):
 
     train_array = np.array(train_df)
     val_array = np.array(val_df)
-
-    weight = calculate_class_weights(train_labels)
 
     timeStart = time.time()
     train_history = model.fit(x=train_array,
