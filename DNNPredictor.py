@@ -158,9 +158,7 @@ resultMetrics = ['TrainingRuntime', 'val_auc', 'auc', 'val_loss', 'loss',
                  'val_tp', 'val_fp', 'val_tn', 'val_fn', 'val_accuracy', 'val_precision', 'val_recall',
                  'val_fscore', 'val_mcc']
 
-modelPath = 'savedModels/DNN_'+str(numLayers)+'L_'+str(numNodes)+'N'+modelName
-if useNeighborhood == False:
-  modelPath = modelPath + '_NN'
+modelPath = 'savedModels/'+modelName
 
 if os.path.exists(modelPath):
   shutil.rmtree(modelPath)
