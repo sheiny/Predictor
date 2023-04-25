@@ -1,3 +1,5 @@
 results/
 benchmarkInfo/
+backup/
+predictions/
 .ipynb_checkpoints

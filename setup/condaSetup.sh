@@ -10,6 +10,7 @@ python3 -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'
 conda install pandas -y
 conda install scikit-learn -y
 conda install chardet -y
+conda install matplotlib -y
 
 conda install ipykernel -y
 python -m ipykernel install --user --name=Tensorflow
