@@ -4,7 +4,4 @@ scikit-learn
 imblearn
 seaborn
 ipykernel
-cuda-python
-nvidia-pyindex
-nvidia-cudnn
 tensorflow
