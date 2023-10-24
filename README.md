@@ -2,7 +2,7 @@
 A DRV predictor using TensorFlow library.
 
 # How to Install:
-Instalation scripts are unde setup/
+Instalation scripts are under setup/
 
 # How to run:
 Run it using jupyter-notebook:<br/>
